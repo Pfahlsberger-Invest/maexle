@@ -29,7 +29,7 @@ const DEFAULT_PEOPLE = [
   { id: 'p4', name: 'Mauchi', color: '#A78BFA', inGame: true, protected: true },
 ];
 
-const BERLIN_TIMEZONE = 'Europe/Berlin';
+const PASSWORD = 'eskalation';
 
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
@@ -54,28 +54,6 @@ const cleanIp = (value) =>
 const cleanName = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 80) : '';
 
-const getExpectedPassword = (now = new Date()) => {
-  const day = Number(
-    new Intl.DateTimeFormat('en-GB', {
-      timeZone: BERLIN_TIMEZONE,
-      day: '2-digit',
-    }).format(now)
-  );
-
-  return `eskalation${day + 11}`;
-};
-
-const getAcceptedPasswords = () => {
-  const now = Date.now();
-  const oneDay = 24 * 60 * 60 * 1000;
-
-  return new Set([
-    getExpectedPassword(new Date(now - oneDay)),
-    getExpectedPassword(new Date(now)),
-    getExpectedPassword(new Date(now + oneDay)),
-  ]);
-};
-
 const getHeader = (headers, name) => {
   const target = name.toLowerCase();
   const entry = Object.entries(headers || {}).find(
@@ -93,7 +71,7 @@ const isAuthorized = (event) => {
     : '';
   const password = passwordFromHeader || passwordFromAuth;
 
-  return getAcceptedPasswords().has(password);
+  return password === PASSWORD;
 };
 
 const normalizeState = (value) => {
