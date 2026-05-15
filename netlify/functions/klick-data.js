@@ -1,4 +1,4 @@
-import { connectLambda, getStore } from '@netlify/blobs';
+import { getStore } from '@netlify/blobs';
 
 const STORE_NAME = 'maexle-score-board';
 const STATE_KEY = 'klick-data';
@@ -65,6 +65,17 @@ const getExpectedPassword = (now = new Date()) => {
   return `eskalation${day + 11}`;
 };
 
+const getAcceptedPasswords = () => {
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  return new Set([
+    getExpectedPassword(new Date(now - oneDay)),
+    getExpectedPassword(new Date(now)),
+    getExpectedPassword(new Date(now + oneDay)),
+  ]);
+};
+
 const getHeader = (headers, name) => {
   const target = name.toLowerCase();
   const entry = Object.entries(headers || {}).find(
@@ -82,7 +93,7 @@ const isAuthorized = (event) => {
     : '';
   const password = passwordFromHeader || passwordFromAuth;
 
-  return password === getExpectedPassword();
+  return getAcceptedPasswords().has(password);
 };
 
 const normalizeState = (value) => {
@@ -339,7 +350,6 @@ export const handler = async (event) => {
     return createResponse(401, { error: 'Unauthorized' });
   }
 
-  connectLambda(event);
   const store = getStore(STORE_NAME);
 
   if (event.httpMethod === 'GET') {
