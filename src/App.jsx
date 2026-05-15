@@ -10,7 +10,17 @@ import {
   Cell,
 } from 'recharts';
 import { Plus, Trophy, Calendar, Clock, Trash2, RotateCcw, Skull, X, History } from 'lucide-react';
-import { fetchGameState, loadGameState, mutateGameState } from './scoreStore';
+import {
+  cacheGameState,
+  clearSessionPassword,
+  fetchGameState,
+  getSessionPassword,
+  isPasswordValid,
+  loadGameState,
+  mutateGameState,
+  readCachedGameState,
+  setSessionPassword,
+} from './scoreStore';
 
 const DECAY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DECAY_AMOUNT = 10;
@@ -47,6 +57,9 @@ export default function App() {
   const [lastClicked, setLastClicked] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [syncError, setSyncError] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const applyPersistedState = (data) => {
     if (!data) return;
@@ -67,10 +80,31 @@ export default function App() {
 
   const syncState = (state) => {
     applyPersistedState(state);
+    cacheGameState(state);
     setSyncError('');
   };
 
-  const handleRequestError = (_error, fallbackMessage) => {
+  const getCurrentState = (overrides = {}) => ({
+    people,
+    clicks,
+    schandeLog,
+    schandeScores,
+    lastDecay,
+    ...overrides,
+  });
+
+  const applyLocalState = (state) => {
+    syncState(state);
+  };
+
+  const handleRequestError = (error, fallbackMessage) => {
+    if (error?.message === 'Unauthorized') {
+      clearSessionPassword();
+      setIsAuthenticated(false);
+      setAuthError('Zugriff nicht moeglich');
+      return;
+    }
+
     setSyncError(fallbackMessage);
   };
 
@@ -98,10 +132,22 @@ export default function App() {
   // Load persisted global state on mount
   useEffect(() => {
     (async () => {
+      const savedPassword = getSessionPassword();
+      if (!isPasswordValid(savedPassword)) {
+        clearSessionPassword();
+        setLoaded(true);
+        return;
+      }
+
+      setIsAuthenticated(true);
       try {
-        const data = await loadGameState();
+        const data = await loadGameState(savedPassword);
         syncState(data);
       } catch (e) {
+        const cached = readCachedGameState();
+        if (cached) {
+          syncState(cached);
+        }
         setSyncError('Server-Speicherung nicht erreichbar');
       }
       setLoaded(true);
@@ -110,7 +156,7 @@ export default function App() {
 
   // Keep open browser windows reasonably fresh when someone else updates the board.
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !isAuthenticated) return;
     const tick = setInterval(async () => {
       try {
         const data = await fetchGameState();
@@ -120,18 +166,49 @@ export default function App() {
       }
     }, 10000);
     return () => clearInterval(tick);
-  }, [loaded]);
+  }, [loaded, isAuthenticated]);
+
+  const handlePasswordSubmit = async () => {
+    const trimmedPassword = password.trim();
+    if (!isPasswordValid(trimmedPassword)) {
+      setAuthError('Zugriff nicht moeglich');
+      return;
+    }
+
+    setSessionPassword(trimmedPassword);
+    setIsAuthenticated(true);
+    setAuthError('');
+    setPassword('');
+
+    try {
+      const data = await loadGameState(trimmedPassword);
+      syncState(data);
+    } catch (error) {
+      const cached = readCachedGameState();
+      if (cached) {
+        syncState(cached);
+      }
+      setSyncError('Server-Speicherung nicht erreichbar');
+    }
+  };
 
   const handleClick = async (personId) => {
     const person = people.find((p) => p.id === personId);
     if (!person || !person.inGame) return; // can't click someone not in the game
+    const participants = people.filter((p) => p.inGame).map((p) => p.id);
+    const entry = {
+      personId,
+      timestamp: Date.now(),
+      ip: userIp || 'unknown',
+      participants,
+    };
+    applyLocalState(getCurrentState({ clicks: [...clicks, entry] }));
     setLastClicked(personId);
     setTimeout(() => setLastClicked(null), 400);
     try {
       const state = await mutateGameState({
         type: 'click',
-        personId,
-        ip: userIp || 'unknown',
+        ...entry,
       });
       syncState(state);
     } catch (error) {
@@ -140,6 +217,10 @@ export default function App() {
   };
 
   const togglePersonInGame = async (id) => {
+    const nextPeople = people.map((p) =>
+      p.id === id ? { ...p, inGame: !p.inGame } : p
+    );
+    applyLocalState(getCurrentState({ people: nextPeople }));
     try {
       const state = await mutateGameState({ type: 'toggle-person', personId: id });
       syncState(state);
@@ -151,11 +232,22 @@ export default function App() {
   const handleAddPerson = async () => {
     const name = newName.trim();
     if (!name) return;
+    const usedColors = people.map((p) => p.color);
+    const color = COLORS.find((c) => !usedColors.includes(c)) ||
+      COLORS[people.length % COLORS.length];
+    const newPerson = {
+      id: `p${Date.now()}`,
+      name,
+      color,
+      inGame: true,
+      protected: false,
+    };
+    applyLocalState(getCurrentState({ people: [...people, newPerson] }));
+    setNewName('');
+    setShowAdd(false);
     try {
-      const state = await mutateGameState({ type: 'add-person', name });
+      const state = await mutateGameState({ type: 'add-person', ...newPerson });
       syncState(state);
-      setNewName('');
-      setShowAdd(false);
     } catch (error) {
       handleRequestError(error, 'Person konnte nicht gespeichert werden');
     }
@@ -163,6 +255,17 @@ export default function App() {
 
   const handleRemove = async (id) => {
     if (people.length <= 1) return;
+    const person = people.find((p) => p.id === id);
+    if (!person || person.protected) return;
+    const nextScores = { ...schandeScores };
+    delete nextScores[id];
+    applyLocalState(
+      getCurrentState({
+        people: people.filter((p) => p.id !== id),
+        clicks: clicks.filter((c) => c.personId !== id),
+        schandeScores: nextScores,
+      })
+    );
     try {
       const state = await mutateGameState({ type: 'remove-person', personId: id });
       syncState(state);
@@ -180,26 +283,35 @@ export default function App() {
     if (!schandeModal) return;
     const personId = schandeModal;
     const delta = sliderValue;
+    const timestamp = Date.now();
+    const current = schandeScores[personId] ?? 0;
+    const updated = Math.max(SCORE_MIN, Math.min(SCORE_MAX, current + delta));
+    const entry = { personId, delta, timestamp, ip: userIp || 'unknown' };
+    applyLocalState(
+      getCurrentState({
+        schandeScores: { ...schandeScores, [personId]: updated },
+        schandeLog: [...schandeLog, entry],
+      })
+    );
+    setSchandeModal(null);
+    setSliderValue(0);
     try {
       const state = await mutateGameState({
         type: 'apply-schande',
-        personId,
-        delta,
-        ip: userIp || 'unknown',
+        ...entry,
       });
       syncState(state);
-      setSchandeModal(null);
-      setSliderValue(0);
     } catch (error) {
       handleRequestError(error, 'Schande-Score konnte nicht gespeichert werden');
     }
   };
 
   const handleReset = async () => {
+    applyLocalState(getCurrentState({ clicks: [] }));
+    setConfirmReset(false);
     try {
       const state = await mutateGameState({ type: 'reset-clicks' });
       syncState(state);
-      setConfirmReset(false);
     } catch (error) {
       handleRequestError(error, 'Reset konnte nicht gespeichert werden');
     }
@@ -276,6 +388,45 @@ export default function App() {
         }}
       >
         <div className="mono text-sm text-stone-500">lade zugang ...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div
+        className="min-h-screen w-full p-4 md:p-8 flex items-center justify-center"
+        style={{
+          fontFamily:
+            "'Bricolage Grotesque', 'Space Grotesk', system-ui, -apple-system, sans-serif",
+          background:
+            'radial-gradient(ellipse at top left, #fef3c7 0%, transparent 50%), radial-gradient(ellipse at bottom right, #fce7f3 0%, transparent 50%), #fffdf7',
+        }}
+      >
+        <div className="w-full max-w-sm bg-white rounded-3xl p-6 md:p-8 border-2 border-stone-900 shadow-[0_8px_0_0_rgba(0,0,0,0.9)]">
+          <div className="space-y-3">
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handlePasswordSubmit();
+              }}
+              placeholder="Passwort"
+              autoFocus
+              className="w-full px-4 py-3 rounded-xl border-2 border-stone-900 outline-none text-stone-900 font-bold"
+            />
+            <button
+              onClick={handlePasswordSubmit}
+              className="w-full px-4 py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-rose-500 transition-colors"
+            >
+              Öffnen
+            </button>
+          </div>
+          {authError && (
+            <div className="mt-4 mono text-[11px] text-rose-500">{authError}</div>
+          )}
+        </div>
       </div>
     );
   }

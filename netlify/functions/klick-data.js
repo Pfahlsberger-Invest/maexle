@@ -29,6 +29,8 @@ const DEFAULT_PEOPLE = [
   { id: 'p4', name: 'Mauchi', color: '#A78BFA', inGame: true, protected: true },
 ];
 
+const BERLIN_TIMEZONE = 'Europe/Berlin';
+
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
@@ -51,6 +53,31 @@ const cleanIp = (value) =>
 
 const cleanName = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 80) : '';
+
+const getExpectedPassword = (date = new Date()) => {
+  const day = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: BERLIN_TIMEZONE,
+      day: '2-digit',
+    }).format(date)
+  );
+
+  return `eskalation${day + 11}`;
+};
+
+const getHeader = (headers, name) => {
+  const target = name.toLowerCase();
+  const entry = Object.entries(headers || {}).find(
+    ([key]) => key.toLowerCase() === target
+  );
+
+  return entry ? entry[1] : '';
+};
+
+const isAuthorized = (event) => {
+  const password = String(getHeader(event.headers, 'x-maexle-password')).trim();
+  return password === getExpectedPassword();
+};
 
 const normalizeState = (value) => {
   const state = isObject(value) ? value : {};
@@ -130,6 +157,7 @@ const applyAction = (state, action, now = Date.now()) => {
         return nextState;
       }
 
+      const timestamp = Number.isFinite(action.timestamp) ? action.timestamp : now;
       const participants = nextState.people
         .filter((entry) => entry.inGame)
         .map((entry) => entry.id);
@@ -140,7 +168,7 @@ const applyAction = (state, action, now = Date.now()) => {
           ...nextState.clicks,
           {
             personId: person.id,
-            timestamp: now,
+            timestamp,
             ip: cleanIp(action.ip),
             participants,
           },
@@ -172,9 +200,9 @@ const applyAction = (state, action, now = Date.now()) => {
         people: [
           ...nextState.people,
           {
-            id: `p${now}`,
+            id: action.id ? String(action.id) : `p${now}`,
             name,
-            color: getNextColor(nextState.people),
+            color: typeof action.color === 'string' ? action.color : getNextColor(nextState.people),
             inGame: true,
             protected: false,
           },
@@ -220,6 +248,7 @@ const applyAction = (state, action, now = Date.now()) => {
 
       const current = Number(nextState.schandeScores[action.personId] || 0);
       const updated = Math.max(SCORE_MIN, Math.min(SCORE_MAX, current + delta));
+      const timestamp = Number.isFinite(action.timestamp) ? action.timestamp : now;
 
       return {
         ...nextState,
@@ -232,7 +261,7 @@ const applyAction = (state, action, now = Date.now()) => {
           {
             personId: action.personId,
             delta,
-            timestamp: now,
+            timestamp,
             ip: cleanIp(action.ip),
           },
         ],
@@ -260,41 +289,23 @@ const createResponse = (statusCode, body) => ({
 });
 
 const readState = async (store) => {
-  const entry = await store.getWithMetadata(STATE_KEY, {
+  const state = await store.get(STATE_KEY, {
     consistency: 'strong',
     type: 'json',
   });
 
-  if (entry === null) {
-    return {
-      state: makeDefaultState(),
-      etag: null,
-    };
+  if (!state) {
+    return makeDefaultState();
   }
 
-  return {
-    state: applyDecay(entry.data),
-    etag: entry.etag,
-  };
-};
-
-const writeState = async (store, state, etag) => {
-  const options = etag ? { onlyIfMatch: etag } : { onlyIfNew: true };
-  return store.setJSON(STATE_KEY, state, options);
+  return applyDecay(state);
 };
 
 const mutateState = async (store, action) => {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { state, etag } = await readState(store);
-    const nextState = applyAction(state, action);
-    const result = await writeState(store, nextState, etag);
-
-    if (result.modified) {
-      return nextState;
-    }
-  }
-
-  throw new Error('Could not persist state due to concurrent updates');
+  const state = await readState(store);
+  const nextState = applyAction(state, action);
+  await store.setJSON(STATE_KEY, nextState);
+  return nextState;
 };
 
 export const handler = async (event) => {
@@ -302,10 +313,14 @@ export const handler = async (event) => {
     return { statusCode: 204, headers: jsonHeaders, body: '' };
   }
 
+  if (!isAuthorized(event)) {
+    return createResponse(401, { error: 'Unauthorized' });
+  }
+
   const store = getStore(STORE_NAME);
 
   if (event.httpMethod === 'GET') {
-    const { state } = await readState(store);
+    const state = await readState(store);
     return createResponse(200, { state });
   }
 
