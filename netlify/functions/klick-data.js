@@ -65,9 +65,22 @@ const getExpectedPassword = (now = new Date()) => {
   return `eskalation${day + 11}`;
 };
 
+const getHeader = (headers, name) => {
+  const target = name.toLowerCase();
+  const entry = Object.entries(headers || {}).find(
+    ([key]) => key.toLowerCase() === target
+  );
+
+  return entry ? entry[1] : '';
+};
+
 const isAuthorized = (event) => {
-  const password =
-    event.headers?.['x-maexle-password'] || event.headers?.['X-Maexle-Password'];
+  const passwordFromHeader = String(getHeader(event.headers, 'x-maexle-password')).trim();
+  const authorization = String(getHeader(event.headers, 'authorization')).trim();
+  const passwordFromAuth = authorization.toLowerCase().startsWith('bearer ')
+    ? authorization.slice(7).trim()
+    : '';
+  const password = passwordFromHeader || passwordFromAuth;
 
   return password === getExpectedPassword();
 };

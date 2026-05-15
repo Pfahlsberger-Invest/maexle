@@ -84,7 +84,7 @@ export default function App() {
     if (error?.message === 'Unauthorized') {
       clearSessionPassword();
       setIsAuthenticated(false);
-      setAuthError('Passwort abgelaufen oder falsch');
+      setAuthError('Zugriff nicht moeglich');
       return;
     }
 
@@ -128,7 +128,7 @@ export default function App() {
       } catch (e) {
         clearSessionPassword();
         setIsAuthenticated(false);
-        setAuthError('Passwort abgelaufen oder falsch');
+        setAuthError('Zugriff nicht moeglich');
       }
       setLoaded(true);
     })();
@@ -162,7 +162,7 @@ export default function App() {
     } catch (error) {
       clearSessionPassword();
       setIsAuthenticated(false);
-      setAuthError('Falsches Tagespasswort');
+      setAuthError('Zugriff nicht moeglich');
     }
   };
 
@@ -342,16 +342,7 @@ export default function App() {
             'radial-gradient(ellipse at top left, #fef3c7 0%, transparent 50%), radial-gradient(ellipse at bottom right, #fce7f3 0%, transparent 50%), #fffdf7',
         }}
       >
-        <div className="w-full max-w-md bg-white rounded-3xl p-6 md:p-8 border-2 border-stone-900 shadow-[0_8px_0_0_rgba(0,0,0,0.9)]">
-          <div className="mono text-[10px] uppercase tracking-widest text-stone-500 mb-2">
-            Zugang
-          </div>
-          <h1 className="text-4xl font-black text-stone-900 leading-none mb-3">
-            Maexle Score-Board
-          </h1>
-          <p className="text-sm text-stone-600 mb-5">
-            Bitte gib das Tagespasswort ein, um die Seite zu öffnen.
-          </p>
+        <div className="w-full max-w-sm bg-white rounded-3xl p-6 md:p-8 border-2 border-stone-900 shadow-[0_8px_0_0_rgba(0,0,0,0.9)]">
           <div className="space-y-3">
             <input
               type="password"
@@ -370,12 +361,6 @@ export default function App() {
             >
               Öffnen
             </button>
-          </div>
-          <div className="mt-4 mono text-[11px] text-stone-500">
-            Schema: <span className="text-stone-900">eskalationXX</span>
-          </div>
-          <div className="mt-1 mono text-[11px] text-stone-400">
-            XX ist aktueller Tag im Monat plus 11.
           </div>
           {authError && (
             <div className="mt-4 mono text-[11px] text-rose-500">{authError}</div>

@@ -51,6 +51,7 @@ const buildHeaders = (password) => {
   const headers = {};
   if (password) {
     headers['x-maexle-password'] = password;
+    headers.authorization = `Bearer ${password}`;
   }
   return headers;
 };

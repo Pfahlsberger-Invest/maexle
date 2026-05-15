@@ -11,7 +11,7 @@ Eine kleine React-Webapp zum Tracken, wer beim Maexle wie oft "drueckt".
 - Ewige-Schande-Score pro Person (-100 bis +100, verfaellt um -10 alle 5 Min)
 - Audit-Trail mit IP, Zeitstempel, Person und Aktion
 - Daten werden global via Netlify Function + Netlify Blobs persistiert
-- Vorschaltseite mit Tagespasswort im Schema `eskalationXX`
+- Vorgeschaltete Zugriffssperre
 - Standardspieler sind geschuetzt und nicht loeschbar
 
 ## Deployment auf Netlify
@@ -45,4 +45,4 @@ Hinweis: Mit reinem `npm run dev` nutzt die App den lokalen Fallback, weil die N
 - Die App holt deine oeffentliche IP einmalig von api.ipify.org fuer den Audit-Trail.
 - Die App speichert den Spielstand global in Netlify Blobs.
 - Wenn die Function lokal nicht erreichbar ist, nutzt die App `localStorage` als Fallback.
-- Das Tagespasswort wird serverseitig geprueft. `XX` ist der aktuelle Tag im Monat plus 11.
+- Die Zugriffssperre wird serverseitig geprueft.
