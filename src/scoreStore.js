@@ -1,6 +1,5 @@
 const STORAGE_KEY = 'klick-data';
 const API_URL = '/.netlify/functions/klick-data';
-const SESSION_PASSWORD_KEY = 'maexle-session-password';
 
 const isLocalDev =
   typeof window !== 'undefined' &&
@@ -39,52 +38,16 @@ const parseRemoteResponse = async (response) => {
   return null;
 };
 
-const getStoredPassword = () => {
-  try {
-    return sessionStorage.getItem(SESSION_PASSWORD_KEY) || '';
-  } catch {
-    return '';
-  }
-};
-
-const buildHeaders = (password) => {
-  const headers = {};
-  if (password) {
-    headers['x-maexle-password'] = password;
-    headers.authorization = `Bearer ${password}`;
-  }
-  return headers;
-};
-
-export const setSessionPassword = (password) => {
-  try {
-    sessionStorage.setItem(SESSION_PASSWORD_KEY, password);
-  } catch {
-    // Ignore session storage issues.
-  }
-};
-
-export const clearSessionPassword = () => {
-  try {
-    sessionStorage.removeItem(SESSION_PASSWORD_KEY);
-  } catch {
-    // Ignore session storage issues.
-  }
-};
-
-export const getSessionPassword = () => getStoredPassword();
-
-export const fetchGameState = async (password = getStoredPassword()) => {
+export const fetchGameState = async () => {
   const response = await fetch(API_URL, {
     cache: 'no-store',
-    headers: buildHeaders(password),
   });
   return parseRemoteResponse(response);
 };
 
-export const loadGameState = async (password = getStoredPassword()) => {
+export const loadGameState = async () => {
   try {
-    return await fetchGameState(password);
+    return await fetchGameState();
   } catch (error) {
     if (isLocalDev) {
       return readLocalState();
@@ -93,13 +56,10 @@ export const loadGameState = async (password = getStoredPassword()) => {
   }
 };
 
-export const mutateGameState = async (action, password = getStoredPassword()) => {
+export const mutateGameState = async (action) => {
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...buildHeaders(password),
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(action),
   });
 

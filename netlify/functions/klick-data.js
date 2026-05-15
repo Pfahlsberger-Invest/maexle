@@ -29,8 +29,6 @@ const DEFAULT_PEOPLE = [
   { id: 'p4', name: 'Mauchi', color: '#A78BFA', inGame: true, protected: true },
 ];
 
-const PASSWORD = 'eskalation';
-
 const jsonHeaders = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
@@ -53,26 +51,6 @@ const cleanIp = (value) =>
 
 const cleanName = (value) =>
   typeof value === 'string' ? value.trim().slice(0, 80) : '';
-
-const getHeader = (headers, name) => {
-  const target = name.toLowerCase();
-  const entry = Object.entries(headers || {}).find(
-    ([key]) => key.toLowerCase() === target
-  );
-
-  return entry ? entry[1] : '';
-};
-
-const isAuthorized = (event) => {
-  const passwordFromHeader = String(getHeader(event.headers, 'x-maexle-password')).trim();
-  const authorization = String(getHeader(event.headers, 'authorization')).trim();
-  const passwordFromAuth = authorization.toLowerCase().startsWith('bearer ')
-    ? authorization.slice(7).trim()
-    : '';
-  const password = passwordFromHeader || passwordFromAuth;
-
-  return password === PASSWORD;
-};
 
 const normalizeState = (value) => {
   const state = isObject(value) ? value : {};
@@ -322,10 +300,6 @@ const mutateState = async (store, action) => {
 export const handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 204, headers: jsonHeaders, body: '' };
-  }
-
-  if (!isAuthorized(event)) {
-    return createResponse(401, { error: 'Unauthorized' });
   }
 
   const store = getStore(STORE_NAME);

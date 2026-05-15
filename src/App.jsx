@@ -10,14 +10,7 @@ import {
   Cell,
 } from 'recharts';
 import { Plus, Trophy, Calendar, Clock, Trash2, RotateCcw, Skull, X, History } from 'lucide-react';
-import {
-  clearSessionPassword,
-  fetchGameState,
-  getSessionPassword,
-  loadGameState,
-  mutateGameState,
-  setSessionPassword,
-} from './scoreStore';
+import { fetchGameState, loadGameState, mutateGameState } from './scoreStore';
 
 const DECAY_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DECAY_AMOUNT = 10;
@@ -54,9 +47,6 @@ export default function App() {
   const [lastClicked, setLastClicked] = useState(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [syncError, setSyncError] = useState('');
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const applyPersistedState = (data) => {
     if (!data) return;
@@ -80,14 +70,7 @@ export default function App() {
     setSyncError('');
   };
 
-  const handleRequestError = (error, fallbackMessage) => {
-    if (error?.message === 'Unauthorized') {
-      clearSessionPassword();
-      setIsAuthenticated(false);
-      setAuthError('Zugriff nicht moeglich');
-      return;
-    }
-
+  const handleRequestError = (_error, fallbackMessage) => {
     setSyncError(fallbackMessage);
   };
 
@@ -116,19 +99,10 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const savedPassword = getSessionPassword();
-        if (!savedPassword) {
-          setLoaded(true);
-          return;
-        }
-
-        const data = await loadGameState(savedPassword);
+        const data = await loadGameState();
         syncState(data);
-        setIsAuthenticated(true);
       } catch (e) {
-        clearSessionPassword();
-        setIsAuthenticated(false);
-        setAuthError('Zugriff nicht moeglich');
+        setSyncError('Server-Speicherung nicht erreichbar');
       }
       setLoaded(true);
     })();
@@ -136,7 +110,7 @@ export default function App() {
 
   // Keep open browser windows reasonably fresh when someone else updates the board.
   useEffect(() => {
-    if (!loaded || !isAuthenticated) return;
+    if (!loaded) return;
     const tick = setInterval(async () => {
       try {
         const data = await fetchGameState();
@@ -146,32 +120,7 @@ export default function App() {
       }
     }, 10000);
     return () => clearInterval(tick);
-  }, [loaded, isAuthenticated]);
-
-  const handlePasswordSubmit = async () => {
-    const trimmedPassword = password.trim();
-    if (!trimmedPassword) return;
-
-    try {
-      const data = await loadGameState(trimmedPassword);
-      setSessionPassword(trimmedPassword);
-      syncState(data);
-      setIsAuthenticated(true);
-      setAuthError('');
-      setPassword('');
-    } catch (error) {
-      clearSessionPassword();
-      setIsAuthenticated(false);
-      setAuthError('Zugriff nicht moeglich');
-    }
-  };
-
-  const handleLogout = () => {
-    clearSessionPassword();
-    setIsAuthenticated(false);
-    setPassword('');
-    setAuthError('');
-  };
+  }, [loaded]);
 
   const handleClick = async (personId) => {
     const person = people.find((p) => p.id === personId);
@@ -331,45 +280,6 @@ export default function App() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div
-        className="min-h-screen w-full p-4 md:p-8 flex items-center justify-center"
-        style={{
-          fontFamily:
-            "'Bricolage Grotesque', 'Space Grotesk', system-ui, -apple-system, sans-serif",
-          background:
-            'radial-gradient(ellipse at top left, #fef3c7 0%, transparent 50%), radial-gradient(ellipse at bottom right, #fce7f3 0%, transparent 50%), #fffdf7',
-        }}
-      >
-        <div className="w-full max-w-sm bg-white rounded-3xl p-6 md:p-8 border-2 border-stone-900 shadow-[0_8px_0_0_rgba(0,0,0,0.9)]">
-          <div className="space-y-3">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handlePasswordSubmit();
-              }}
-              placeholder="Passwort"
-              autoFocus
-              className="w-full px-4 py-3 rounded-xl border-2 border-stone-900 outline-none text-stone-900 font-bold"
-            />
-            <button
-              onClick={handlePasswordSubmit}
-              className="w-full px-4 py-3 bg-stone-900 text-white rounded-xl font-bold hover:bg-rose-500 transition-colors"
-            >
-              Öffnen
-            </button>
-          </div>
-          {authError && (
-            <div className="mt-4 mono text-[11px] text-rose-500">{authError}</div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       className="min-h-screen w-full p-4 md:p-8"
@@ -455,22 +365,13 @@ export default function App() {
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setAuditOpen(true)}
-                className="px-3 py-2 bg-stone-900 text-white rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-rose-500 transition-colors shadow-[0_2px_0_0_rgba(0,0,0,0.9)] hover:shadow-[0_4px_0_0_rgba(0,0,0,0.9)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-[0_1px_0_0_rgba(0,0,0,0.9)]"
-                title="Audit-Trail anzeigen"
-              >
-                <History size={14} /> Audit-Trail
-              </button>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-2 bg-white text-stone-700 rounded-xl font-bold text-xs border-2 border-stone-900 hover:bg-stone-100 transition-colors"
-                title="Sitzung beenden"
-              >
-                Logout
-              </button>
-            </div>
+            <button
+              onClick={() => setAuditOpen(true)}
+              className="px-3 py-2 bg-stone-900 text-white rounded-xl font-bold text-xs flex items-center gap-2 hover:bg-rose-500 transition-colors shadow-[0_2px_0_0_rgba(0,0,0,0.9)] hover:shadow-[0_4px_0_0_rgba(0,0,0,0.9)] hover:-translate-y-0.5 active:translate-y-0 active:shadow-[0_1px_0_0_rgba(0,0,0,0.9)]"
+              title="Audit-Trail anzeigen"
+            >
+              <History size={14} /> Audit-Trail
+            </button>
             <div className="mono text-xs text-stone-400 text-right">
               <div>{new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
               <div>{clicks.length} runden gespielt</div>
